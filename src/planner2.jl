@@ -34,6 +34,7 @@ function action_info(pomcp::POMCPOWPlanner{P,NBU}, b; tree_in_info=false) where 
         a = search(pomcp, tree, info)
         if pomcp.solver.tree_in_info || tree_in_info
             info[:tree] = tree
+            # println(info[:tree])
         end
     catch ex
         a = convert(A, default_action(pomcp.solver.default_action, pomcp.problem, b, ex))
@@ -65,26 +66,30 @@ end
 
 
 function search(pomcp::POMCPOWPlanner, tree::POMCPOWTree, info::Dict{Symbol,Any}=Dict{Symbol,Any}())
-    timer = pomcp.solver.timer
     all_terminal = true
     # gc_enable(false)
     i = 0
-    t0 = timer()
+    start_us = CPUtime_us()
+    info[:tree_depth] = 0
+    dep_count=0
     while i < pomcp.solver.tree_queries
         i += 1
         s = rand(pomcp.solver.rng, tree.root_belief)
         if !POMDPs.isterminal(pomcp.problem, s)
             max_depth = min(pomcp.solver.max_depth, ceil(Int, log(pomcp.solver.eps)/log(discount(pomcp.problem))))
-            simulate(pomcp, POWTreeObsNode(tree, 1), s, max_depth)
+            reward, depth = simulate(pomcp, POWTreeObsNode(tree, 1), s, max_depth)
+            info[:tree_depth] = (info[:tree_depth] * dep_count + depth) / (dep_count + 1)
+            dep_count+=1
+            # info[:tree_depth] = max(info[:tree_depth], depth)
             all_terminal = false
         end
-        if timer() - t0 >= pomcp.solver.max_time
+        if CPUtime_us() - start_us >= pomcp.solver.max_time*1e6
             break
         end
     end
-    info[:search_time] = timer() - t0
+    info[:search_time_us] = CPUtime_us() - start_us
     info[:tree_queries] = i
-
+    # println(info[:search_time_us]/1e6," seconds")
     if all_terminal
         throw(AllSamplesTerminal(tree.root_belief))
     end

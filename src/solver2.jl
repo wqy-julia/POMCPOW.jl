@@ -1,17 +1,22 @@
 function simulate(pomcp::POMCPOWPlanner, h_node::POWTreeObsNode{B,A,O}, s::S, d) where {B,S,A,O}
-
     tree = h_node.tree
     h = h_node.node
-
     sol = pomcp.solver
-
+    dep = 1.0
+    # if POMDPs.isterminal(pomcp.problem, s)
+    #     return 0.0, dep
+    # end
+    # if d <= 0
+    #     return 0.0, dep
+    # end
     if POMDPs.isterminal(pomcp.problem, s) || d <= 0
-        return 0.0
+        return 0.0, dep
     end
 
     if sol.enable_action_pw
         total_n = tree.total_n[h]
-        if length(tree.tried[h]) <= sol.k_action*total_n^sol.alpha_action
+        if length(tree.tried[h]) <= sol.k_action * total_n ^ sol.alpha_action
+        # if length(tree.tried[h]) < 1
             if h == 1
                 a = next_action(pomcp.next_action, pomcp.problem, tree.root_belief, POWTreeObsNode(tree, h))
             else
@@ -47,6 +52,7 @@ function simulate(pomcp::POMCPOWPlanner, h_node::POWTreeObsNode{B,A,O}, s::S, d)
 
     new_node = false
     if tree.n_a_children[best_node] <= sol.k_observation*(tree.n[best_node]^sol.alpha_observation)
+    # if tree.n_a_children[best_node] < 1
 
         sp, o, r = @gen(:sp, :o, :r)(pomcp.problem, s, a, sol.rng)
 
@@ -69,7 +75,6 @@ function simulate(pomcp::POMCPOWPlanner, h_node::POWTreeObsNode{B,A,O}, s::S, d)
         end
         push!(tree.generated[best_node], o=>hao)
     else
-
         sp, r = @gen(:sp, :r)(pomcp.problem, s, a, sol.rng)
 
     end
@@ -79,6 +84,7 @@ function simulate(pomcp::POMCPOWPlanner, h_node::POWTreeObsNode{B,A,O}, s::S, d)
     end
 
     if new_node
+        dep = dep + 1.0
         R = r + POMDPs.discount(pomcp.problem)*estimate_value(pomcp.solved_estimate, pomcp.problem, sp, POWTreeObsNode(tree, hao), d-1)
     else
         pair = rand(sol.rng, tree.generated[best_node])
@@ -86,8 +92,11 @@ function simulate(pomcp::POMCPOWPlanner, h_node::POWTreeObsNode{B,A,O}, s::S, d)
         hao = pair.second
         push_weighted!(tree.sr_beliefs[hao], pomcp.node_sr_belief_updater, s, sp, r)
         sp, r = rand(sol.rng, tree.sr_beliefs[hao])
-
-        R = r + POMDPs.discount(pomcp.problem)*simulate(pomcp, POWTreeObsNode(tree, hao), sp, d-1)
+        reward, depth = simulate(pomcp, POWTreeObsNode(tree, hao), sp, d-1)
+        dep = depth + 1
+        # dep = max(depth + 1, dep)
+        R = r + POMDPs.discount(pomcp.problem) * reward
+        # R = r + POMDPs.discount(pomcp.problem)*simulate(pomcp, POWTreeObsNode(tree, hao), sp, d-1)
     end
 
     tree.n[best_node] += 1
@@ -96,6 +105,6 @@ function simulate(pomcp::POMCPOWPlanner, h_node::POWTreeObsNode{B,A,O}, s::S, d)
         tree.v[best_node] += (R-tree.v[best_node])/tree.n[best_node]
     end
 
-    return R
+    return R, dep
 end
 
