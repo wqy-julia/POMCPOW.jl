@@ -32,6 +32,12 @@ function action_info(pomcp::POMCPOWPlanner{P,NBU}, b; tree_in_info=false) where 
     local a::A
     try
         a = search(pomcp, tree, info)
+        info[:ALEVEL]=length(tree.tried[1])
+        o_sum=0
+        for i in tree.tried[1]
+            o_sum+=tree.n_a_children[i]
+        end
+        info[:OLEVEL]=o_sum
         if pomcp.solver.tree_in_info || tree_in_info
             info[:tree] = tree
             # println(info[:tree])
